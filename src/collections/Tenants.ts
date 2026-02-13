@@ -7,10 +7,10 @@ export const Tenants: CollectionConfig = {
     group: 'System',
   },
   access: {
-    read: ({ req: { user } }) => {
-      if (user?.role === 'super-admin') return true
-      return false
-    },
+    // ✅ Sab users read kar sakte hain
+    read: () => true,
+    
+    // ✅ Sirf Super Admin create/update/delete kar sakta hai
     create: ({ req: { user } }) => user?.role === 'super-admin',
     update: ({ req: { user } }) => user?.role === 'super-admin',
     delete: ({ req: { user } }) => user?.role === 'super-admin',
@@ -21,7 +21,6 @@ export const Tenants: CollectionConfig = {
       type: 'text',
       required: true,
       unique: true,
-      label: 'Tenant Name',
     },
     {
       name: 'slug',
@@ -38,6 +37,6 @@ export const Tenants: CollectionConfig = {
           },
         ],
       },
-    },
+    }
   ],
 }
