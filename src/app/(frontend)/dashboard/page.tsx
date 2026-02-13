@@ -7,19 +7,29 @@ import Link from 'next/link'
 export default function Dashboard() {
   const [user, setUser] = useState(null)
   const [showDropdown, setShowDropdown] = useState(false)
+  const [totalProducts, setTotalProducts] = useState(0)
+  const [loading, setLoading] = useState(true)
   const router = useRouter()
 
+  const fetchProductCount = async () => {
+    const res = await fetch ('/api/products?limit=0')
+    const data = await res.json()
+    setTotalProducts(data.totalDocs || 0)
+    setLoading(false)
+  }
   useEffect(() => {
     fetch('/api/users/me')
       .then(res => res.json())
       .then(data => {
         if (data.user) {
           setUser(data.user)
+          fetchProductCount()
         } else {
           router.push('/login')
         }
       })
   }, [])
+
 
   const handleLogout = async () => {
     await fetch('/api/users/logout', { method: 'POST' })
@@ -87,7 +97,7 @@ export default function Dashboard() {
         <div style={styles.statsGrid}>
           <div style={styles.statCard}>
             <h3>Total Products</h3>
-            <p style={styles.statNumber}>0</p>
+            <p style={styles.statNumber}>{loading ? '...' : totalProducts}</p>
           </div>
           <div style={styles.statCard}>
             <h3>Active Tenants</h3>
