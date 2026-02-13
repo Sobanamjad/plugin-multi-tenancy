@@ -8,6 +8,7 @@ export default function Dashboard() {
   const [user, setUser] = useState(null)
   const [showDropdown, setShowDropdown] = useState(false)
   const [totalProducts, setTotalProducts] = useState(0)
+  const [totalTenants, setTotalTenants] = useState(0)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
@@ -18,6 +19,13 @@ export default function Dashboard() {
     setLoading(false)
   }
 
+  const fetchTenantCount = async () => {
+    const res = await fetch('/api/tenants?limit=0')
+    const data = await res.json()
+    setTotalTenants(data.totalDocs || 0)
+    setLoading(false)
+  }
+
   useEffect(() => {
     fetch('/api/users/me') 
       .then(res => res.json())
@@ -25,6 +33,7 @@ export default function Dashboard() {
         if (data.user) {
           setUser(data.user)
           fetchProductCount()
+          fetchTenantCount()
         } else {
           router.push('/login')
         }
@@ -102,7 +111,7 @@ export default function Dashboard() {
           </div>
           <div style={styles.statCard}>
             <h3>Active Tenants</h3>
-            <p style={styles.statNumber}>0</p>
+            <p style={styles.statNumber}>{ loading ? '...': totalTenants}</p>
           </div>
           <div style={styles.statCard}>
             <h3>Users</h3>
@@ -119,12 +128,12 @@ export default function Dashboard() {
               <h3>Manage Products</h3>
               <p>Add, edit or delete products</p>
             </Link>
-            <Link href="/admin/collections/tenants" style={styles.linkCard}>
+            <Link href="/tenants" style={styles.linkCard}>
               <div style={styles.linkIcon}>🏢</div>
               <h3>Manage Tenants</h3>
               <p>View and manage tenants</p>
             </Link>
-            <Link href="/admin/collections/users" style={styles.linkCard}>
+            <Link href="/users" style={styles.linkCard}>
               <div style={styles.linkIcon}>👥</div>
               <h3>Manage Users</h3>
               <p>View and manage users</p>

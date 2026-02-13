@@ -184,6 +184,9 @@ export default function ProductsPage() {
         <div style={styles.navRight}>
           <Link href="/dashboard" style={styles.navLink}>Dashboard</Link>
           <Link href="/products" style={{...styles.navLink, ...styles.activeLink}}>Products</Link>
+          <Link href="/tenants" style={{...styles.navLink, ...styles.activeLink}}>Tenants</Link>
+          <Link href="/users" style={styles.navLink}>Users</Link>
+
           
           <div style={styles.profileContainer}>
             <div 
