@@ -8,6 +8,7 @@ import sharp from 'sharp'
 import { Users } from './collections/Users'
 import { Tenants } from './collections/Tenants'
 import { Products } from './collections/Products'
+import { Media } from './collections/Media'
 import { multiTenantPlugin } from '@payloadcms/plugin-multi-tenant'
 
 const filename = fileURLToPath(import.meta.url)
@@ -17,7 +18,7 @@ export default buildConfig({
   admin: {
     user: Users.slug,
   },
-  collections: [Users, Tenants, Products],
+  collections: [Users, Tenants, Products, Media,],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   db: postgresAdapter({
@@ -28,9 +29,7 @@ export default buildConfig({
   sharp,
   plugins: [
     multiTenantPlugin({
-      // ✅ YEH SAHI TARIKA HAI - collections object ke andar slug use karo
       collections: {
-        // Collection slug = 'products'
         products: {
           tenantField: {
             name: 'tenant',  // Field name
@@ -41,7 +40,7 @@ export default buildConfig({
       },
       tenantsSlug: 'tenants',
       tenantsArrayField: {
-        name: 'tenants',  // Users collection mein yeh field add hoga
+        name: 'tenants',  
         arrayFieldName: 'tenants',
         arrayTenantFieldName: 'tenant',
       },

@@ -5,13 +5,11 @@ export const Products: CollectionConfig = {
   admin: {
     useAsTitle: 'name',
     group: 'Content',
-    defaultColumns: ['name', 'price', 'tenant'],
+    defaultColumns: ['name', 'price', 'description', 'image', 'tenant'],
   },
   access: {
-    // ✅ Read - sab apne tenant ke products dekh sakte hain
     read: ({ req: { user } }) => {
       if (user?.role === 'super-admin') return true
-      // Sirf apne tenant ke products dikhao
       const tenantIds = user?.tenants?.map(({ tenant }) => 
         typeof tenant === 'object' ? tenant.id : tenant
       ) || []
@@ -22,14 +20,12 @@ export const Products: CollectionConfig = {
       }
     },
     
-    // ✅ Create - Tenant Admin bhi create kar sakta hai
     create: ({ req: { user } }) => {
       if (user?.role === 'super-admin') return true
       if (user?.role === 'tenant-admin' && user?.tenants?.length > 0) return true
       return false
     },
     
-    // ✅ Update - Tenant Admin apne tenant ke products edit kar sakta hai
     update: ({ req: { user } }) => {
       if (user?.role === 'super-admin') return true
       if (user?.role === 'tenant-admin') {
@@ -45,7 +41,6 @@ export const Products: CollectionConfig = {
       return false
     },
     
-    // ✅ Delete - Tenant Admin apne tenant ke products delete kar sakta hai
     delete: ({ req: { user } }) => {
       if (user?.role === 'super-admin') return true
       if (user?.role === 'tenant-admin') {
@@ -67,14 +62,180 @@ export const Products: CollectionConfig = {
       type: 'text',
       required: true,
       label: 'Product Name',
+      admin: {
+        placeholder: 'Enter product name...'
+      }
     },
+    
     {
       name: 'price',
       type: 'number',
       required: true,
       label: 'Price',
       min: 0,
+      admin: {
+        placeholder: '0.00',
+        step: 0.01
+      }
     },
-    // Tenant field plugin auto-add karega
+    
+    {
+      name: 'description',
+      type: 'richText',  // Rich text editor for better formatting
+      label: 'Description',
+      admin: {
+        placeholder: 'Enter product description...',
+        elements: [
+          'h1',
+          'h2',
+          'h3',
+          'h4',
+          'h5',
+          'h6',
+          'link',
+          'blockquote',
+          'ul',
+          'ol',
+          'indent',
+        ],
+        leaves: [
+          'bold',
+          'italic',
+          'underline',
+          'strikethrough',
+          'code',
+        ],
+      }
+    },
+    
+    {
+      name: 'shortDescription',
+      type: 'textarea',
+      label: 'Short Description',
+      admin: {
+        placeholder: 'Brief description for product listings...',
+        rows: 3,
+        maxLength: 200,
+        description: 'Maximum 200 characters'
+      }
+    },
+    
+    {
+      name: 'image',
+      type: 'upload',
+      relationTo: 'media',  // Assuming you have a media collection
+      label: 'Product Image',
+      admin: {
+        position: 'sidebar',
+        description: 'Upload main product image'
+      }
+    },
+    
+    {
+      name: 'gallery',
+      type: 'array',
+      label: 'Product Gallery',
+      labels: {
+        singular: 'Image',
+        plural: 'Images'
+      },
+      fields: [
+        {
+          name: 'image',
+          type: 'upload',
+          relationTo: 'media',
+          required: true,
+        },
+        {
+          name: 'altText',
+          type: 'text',
+          label: 'Alt Text',
+          admin: {
+            placeholder: 'Describe the image for accessibility...'
+          }
+        }
+      ],
+      admin: {
+        description: 'Additional product images'
+      }
+    },
+    
+    {
+      name: 'category',
+      type: 'select',
+      label: 'Category',
+      options: [
+        { label: 'Electronics', value: 'electronics' },
+        { label: 'Clothing', value: 'clothing' },
+        { label: 'Books', value: 'books' },
+        { label: 'Home & Garden', value: 'home-garden' },
+        { label: 'Sports', value: 'sports' },
+        { label: 'Toys', value: 'toys' },
+        { label: 'Food', value: 'food' },
+        { label: 'Other', value: 'other' },
+      ],
+      admin: {
+        position: 'sidebar',
+      }
+    },
+    
+    {
+      name: 'tags',
+      type: 'text',
+      label: 'Tags',
+      hasMany: true,
+      admin: {
+        position: 'sidebar',
+        description: 'Press Enter to add tags'
+      }
+    },
+    
+    {
+      name: 'status',
+      type: 'select',
+      label: 'Status',
+      defaultValue: 'draft',
+      options: [
+        { label: 'Draft', value: 'draft' },
+        { label: 'Published', value: 'published' },
+        { label: 'Archived', value: 'archived' },
+      ],
+      admin: {
+        position: 'sidebar',
+      }
+    },
+    
+    {
+      name: 'inStock',
+      type: 'checkbox',
+      label: 'In Stock',
+      defaultValue: true,
+      admin: {
+        position: 'sidebar',
+      }
+    },
+    
+    {
+      name: 'quantity',
+      type: 'number',
+      label: 'Quantity',
+      min: 0,
+      defaultValue: 0,
+      admin: {
+        position: 'sidebar',
+        condition: (data) => data?.inStock === true,
+      }
+    },
+    
+    {
+      name: 'sku',
+      type: 'text',
+      label: 'SKU',
+      unique: true,
+      admin: {
+        position: 'sidebar',
+        placeholder: 'e.g., PRD-001'
+      }
+    }
   ],
 }
