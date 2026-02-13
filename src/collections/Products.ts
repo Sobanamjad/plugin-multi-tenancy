@@ -7,55 +7,6 @@ export const Products: CollectionConfig = {
     group: 'Content',
     defaultColumns: ['name', 'price', 'description', 'image', 'tenant'],
   },
-  access: {
-    read: ({ req: { user } }) => {
-      if (user?.role === 'super-admin') return true
-      const tenantIds = user?.tenants?.map(({ tenant }) => 
-        typeof tenant === 'object' ? tenant.id : tenant
-      ) || []
-      return {
-        tenant: {
-          in: tenantIds
-        }
-      }
-    },
-    
-    create: ({ req: { user } }) => {
-      if (user?.role === 'super-admin') return true
-      if (user?.role === 'tenant-admin' && user?.tenants?.length > 0) return true
-      return false
-    },
-    
-    update: ({ req: { user } }) => {
-      if (user?.role === 'super-admin') return true
-      if (user?.role === 'tenant-admin') {
-        const tenantIds = user?.tenants?.map(({ tenant }) => 
-          typeof tenant === 'object' ? tenant.id : tenant
-        ) || []
-        return {
-          tenant: {
-            in: tenantIds
-          }
-        }
-      }
-      return false
-    },
-    
-    delete: ({ req: { user } }) => {
-      if (user?.role === 'super-admin') return true
-      if (user?.role === 'tenant-admin') {
-        const tenantIds = user?.tenants?.map(({ tenant }) => 
-          typeof tenant === 'object' ? tenant.id : tenant
-        ) || []
-        return {
-          tenant: {
-            in: tenantIds
-          }
-        }
-      }
-      return false
-    },
-  },
   fields: [
     {
       name: 'name',
@@ -80,8 +31,20 @@ export const Products: CollectionConfig = {
     },
     
     {
+      name: 'shortDescription',
+      type: 'textarea',
+      label: 'Short Description',
+      admin: {
+        placeholder: 'Brief description for product listings...',
+        rows: 3,
+        maxLength: 200,
+        description: 'Maximum 200 characters'
+      }
+    },
+    
+    {
       name: 'description',
-      type: 'richText',  // Rich text editor for better formatting
+      type: 'richText',
       label: 'Description',
       admin: {
         placeholder: 'Enter product description...',
@@ -109,21 +72,9 @@ export const Products: CollectionConfig = {
     },
     
     {
-      name: 'shortDescription',
-      type: 'textarea',
-      label: 'Short Description',
-      admin: {
-        placeholder: 'Brief description for product listings...',
-        rows: 3,
-        maxLength: 200,
-        description: 'Maximum 200 characters'
-      }
-    },
-    
-    {
       name: 'image',
       type: 'upload',
-      relationTo: 'media',  // Assuming you have a media collection
+      relationTo: 'media',
       label: 'Product Image',
       admin: {
         position: 'sidebar',
@@ -236,6 +187,6 @@ export const Products: CollectionConfig = {
         position: 'sidebar',
         placeholder: 'e.g., PRD-001'
       }
-    }
+    },
   ],
 }

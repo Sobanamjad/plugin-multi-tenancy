@@ -124,7 +124,7 @@ export interface UserAuthOperations {
  */
 export interface User {
   id: number;
-  role: 'super-admin' | 'tenant-admin';
+  role: 'super-admin' | 'tenant-admin' | 'user';
   tenants?:
     | {
         tenant: number | Tenant;
@@ -170,6 +170,10 @@ export interface Product {
   tenant?: (number | null) | Tenant;
   name: string;
   price: number;
+  /**
+   * Maximum 200 characters
+   */
+  shortDescription?: string | null;
   description?: {
     root: {
       type: string;
@@ -185,10 +189,6 @@ export interface Product {
     };
     [k: string]: unknown;
   } | null;
-  /**
-   * Maximum 200 characters
-   */
-  shortDescription?: string | null;
   /**
    * Upload main product image
    */
@@ -222,10 +222,9 @@ export interface Product {
 export interface Media {
   id: number;
   /**
-   * Describe the image for accessibility and SEO
+   * Describe the image for accessibility
    */
   altText?: string | null;
-  caption?: string | null;
   tenant?: (number | null) | Tenant;
   updatedAt: string;
   createdAt: string;
@@ -247,15 +246,7 @@ export interface Media {
       filesize?: number | null;
       filename?: string | null;
     };
-    card?: {
-      url?: string | null;
-      width?: number | null;
-      height?: number | null;
-      mimeType?: string | null;
-      filesize?: number | null;
-      filename?: string | null;
-    };
-    large?: {
+    medium?: {
       url?: string | null;
       width?: number | null;
       height?: number | null;
@@ -394,8 +385,8 @@ export interface ProductsSelect<T extends boolean = true> {
   tenant?: T;
   name?: T;
   price?: T;
-  description?: T;
   shortDescription?: T;
+  description?: T;
   image?: T;
   gallery?:
     | T
@@ -419,7 +410,6 @@ export interface ProductsSelect<T extends boolean = true> {
  */
 export interface MediaSelect<T extends boolean = true> {
   altText?: T;
-  caption?: T;
   tenant?: T;
   updatedAt?: T;
   createdAt?: T;
@@ -445,17 +435,7 @@ export interface MediaSelect<T extends boolean = true> {
               filesize?: T;
               filename?: T;
             };
-        card?:
-          | T
-          | {
-              url?: T;
-              width?: T;
-              height?: T;
-              mimeType?: T;
-              filesize?: T;
-              filename?: T;
-            };
-        large?:
+        medium?:
           | T
           | {
               url?: T;

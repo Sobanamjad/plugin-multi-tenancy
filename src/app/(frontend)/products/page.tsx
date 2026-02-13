@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import Image from 'next/image'
 
 export default function ProductsPage() {
   const [products, setProducts] = useState([])
@@ -12,16 +11,19 @@ export default function ProductsPage() {
   const [formData, setFormData] = useState({ 
     name: '', 
     price: '',
-    description: '',
     shortDescription: '',
+    description: '',
     category: '',
     status: 'draft',
     inStock: true,
     quantity: 0,
-    sku: ''
+    sku: '',
+    image: null
   })
   const [user, setUser] = useState(null)
   const [showDropdown, setShowDropdown] = useState(false)
+  const [selectedFile, setSelectedFile] = useState(null)
+  const [previewUrl, setPreviewUrl] = useState('')
   const router = useRouter()
 
   useEffect(() => {
@@ -51,8 +53,49 @@ export default function ProductsPage() {
     })
   }
 
+  const handleImageChange = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      setSelectedFile(file)
+      setPreviewUrl(URL.createObjectURL(file))
+    }
+  }
+
+  const uploadImage = async () => {
+    if (!selectedFile) return null
+
+    const formData = new FormData()
+    formData.append('file', selectedFile)
+
+    const res = await fetch('/api/media', {
+      method: 'POST',
+      body: formData
+    })
+
+    if (res.ok) {
+      const data = await res.json()
+      return data.doc
+    }
+    return null
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
+    
+    let imageData = null
+    if (selectedFile) {
+      imageData = await uploadImage()
+    }
+
+    const productData = {
+      ...formData,
+      price: parseFloat(formData.price),
+      quantity: parseInt(formData.quantity) || 0
+    }
+
+    if (imageData) {
+      productData.image = imageData.id
+    }
     
     const url = editingProduct 
       ? `/api/products/${editingProduct.id}`
@@ -63,22 +106,25 @@ export default function ProductsPage() {
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(formData)
+      body: JSON.stringify(productData)
     })
 
     if (res.ok) {
       setShowModal(false)
       setEditingProduct(null)
+      setSelectedFile(null)
+      setPreviewUrl('')
       setFormData({ 
         name: '', 
         price: '',
-        description: '',
         shortDescription: '',
+        description: '',
         category: '',
         status: 'draft',
         inStock: true,
         quantity: 0,
-        sku: ''
+        sku: '',
+        image: null
       })
       fetchProducts()
     }
@@ -89,14 +135,18 @@ export default function ProductsPage() {
     setFormData({
       name: product.name,
       price: product.price,
-      description: product.description || '',
       shortDescription: product.shortDescription || '',
+      description: product.description || '',
       category: product.category || '',
       status: product.status || 'draft',
       inStock: product.inStock ?? true,
       quantity: product.quantity || 0,
-      sku: product.sku || ''
+      sku: product.sku || '',
+      image: product.image || null
     })
+    if (product.image) {
+      setPreviewUrl(product.image.url)
+    }
     setShowModal(true)
   }
 
@@ -176,16 +226,19 @@ export default function ProductsPage() {
             style={styles.addButton}
             onClick={() => {
               setEditingProduct(null)
+              setSelectedFile(null)
+              setPreviewUrl('')
               setFormData({ 
                 name: '', 
                 price: '',
-                description: '',
                 shortDescription: '',
+                description: '',
                 category: '',
                 status: 'draft',
                 inStock: true,
                 quantity: 0,
-                sku: ''
+                sku: '',
+                image: null
               })
               setShowModal(true)
             }}
@@ -219,7 +272,7 @@ export default function ProductsPage() {
                         style={styles.productImage}
                       />
                     ) : (
-                      <div style={styles.noImage}>No Image</div>
+                      <div style={styles.noImage}>📷</div>
                     )}
                   </td>
                   <td style={styles.td}>
@@ -231,17 +284,19 @@ export default function ProductsPage() {
                   <td style={styles.td}>
                     <span style={{
                       ...styles.statusBadge,
-                      backgroundColor: product.status === 'published' ? '#c6f6d5' : '#fed7d7',
-                      color: product.status === 'published' ? '#22543d' : '#742a2a'
+                      backgroundColor: product.status === 'published' ? '#c6f6d5' : 
+                                     product.status === 'draft' ? '#fff3cd' : '#fed7d7',
+                      color: product.status === 'published' ? '#22543d' : 
+                            product.status === 'draft' ? '#856404' : '#742a2a'
                     }}>
                       {product.status}
                     </span>
                   </td>
                   <td style={styles.td}>
                     {product.inStock ? (
-                      <span style={styles.inStock}>In Stock ({product.quantity})</span>
+                      <span style={styles.inStock}>✓ {product.quantity}</span>
                     ) : (
-                      <span style={styles.outOfStock}>Out of Stock</span>
+                      <span style={styles.outOfStock}>✗ Out</span>
                     )}
                   </td>
                   <td style={styles.td}>
@@ -281,6 +336,42 @@ export default function ProductsPage() {
             </h2>
             
             <form onSubmit={handleSubmit} style={styles.modalForm}>
+              {/* Image Upload Field - NEW */}
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Product Image</label>
+                <div style={styles.imageUploadContainer}>
+                  {previewUrl ? (
+                    <div style={styles.imagePreview}>
+                      <img src={previewUrl} alt="Preview" style={styles.previewImage} />
+                      <button 
+                        type="button"
+                        style={styles.removeImageBtn}
+                        onClick={() => {
+                          setSelectedFile(null)
+                          setPreviewUrl('')
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={styles.uploadArea}>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageChange}
+                        style={styles.fileInput}
+                        id="image-upload"
+                      />
+                      <label htmlFor="image-upload" style={styles.uploadLabel}>
+                        📸 Click to upload image
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Basic Info */}
               <div style={styles.formRow}>
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Product Name *</label>
@@ -291,6 +382,7 @@ export default function ProductsPage() {
                     onChange={handleInputChange}
                     style={styles.input}
                     required
+                    placeholder="Enter product name"
                   />
                 </div>
 
@@ -305,34 +397,25 @@ export default function ProductsPage() {
                     required
                     min="0"
                     step="0.01"
+                    placeholder="0.00"
                   />
                 </div>
               </div>
 
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Short Description</label>
-                <textarea
-                  name="shortDescription"
-                  value={formData.shortDescription}
-                  onChange={handleInputChange}
-                  style={styles.textarea}
-                  rows="3"
-                  maxLength="200"
-                />
-              </div>
-
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Description</label>
-                <textarea
-                  name="description"
-                  value={formData.description}
-                  onChange={handleInputChange}
-                  style={styles.textarea}
-                  rows="5"
-                />
-              </div>
-
+              {/* SKU and Category */}
               <div style={styles.formRow}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>SKU</label>
+                  <input
+                    type="text"
+                    name="sku"
+                    value={formData.sku}
+                    onChange={handleInputChange}
+                    style={styles.input}
+                    placeholder="e.g., PRD-001"
+                  />
+                </div>
+
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Category</label>
                   <select
@@ -352,7 +435,37 @@ export default function ProductsPage() {
                     <option value="other">Other</option>
                   </select>
                 </div>
+              </div>
 
+              {/* Short Description */}
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Short Description</label>
+                <textarea
+                  name="shortDescription"
+                  value={formData.shortDescription}
+                  onChange={handleInputChange}
+                  style={styles.textarea}
+                  rows="2"
+                  maxLength="200"
+                  placeholder="Brief description (max 200 chars)"
+                />
+              </div>
+
+              {/* Full Description */}
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Full Description</label>
+                <textarea
+                  name="description"
+                  value={formData.description}
+                  onChange={handleInputChange}
+                  style={styles.textarea}
+                  rows="4"
+                  placeholder="Detailed product description"
+                />
+              </div>
+
+              {/* Status and Stock */}
+              <div style={styles.formRow}>
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Status</label>
                   <select
@@ -365,20 +478,6 @@ export default function ProductsPage() {
                     <option value="published">Published</option>
                     <option value="archived">Archived</option>
                   </select>
-                </div>
-              </div>
-
-              <div style={styles.formRow}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>SKU</label>
-                  <input
-                    type="text"
-                    name="sku"
-                    value={formData.sku}
-                    onChange={handleInputChange}
-                    style={styles.input}
-                    placeholder="e.g., PRD-001"
-                  />
                 </div>
 
                 <div style={styles.formGroup}>
@@ -406,16 +505,21 @@ export default function ProductsPage() {
                 </div>
               </div>
 
+              {/* Form Actions */}
               <div style={styles.modalActions}>
                 <button 
                   type="button" 
                   style={styles.cancelBtn}
-                  onClick={() => setShowModal(false)}
+                  onClick={() => {
+                    setShowModal(false)
+                    setSelectedFile(null)
+                    setPreviewUrl('')
+                  }}
                 >
                   Cancel
                 </button>
                 <button type="submit" style={styles.saveBtn}>
-                  {editingProduct ? 'Update' : 'Save'}
+                  {editingProduct ? 'Update Product' : 'Create Product'}
                 </button>
               </div>
             </form>
@@ -781,5 +885,52 @@ const styles = {
     fontWeight: '600',
     cursor: 'pointer',
     transition: 'background 0.3s'
+  },
+   imageUploadContainer: {
+    marginBottom: '10px'
+  },
+  imagePreview: {
+    position: 'relative',
+    width: '200px',
+    height: '200px',
+    borderRadius: '8px',
+    overflow: 'hidden',
+    border: '2px solid #e0e0e0'
+  },
+  previewImage: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover'
+  },
+  removeImageBtn: {
+    position: 'absolute',
+    top: '5px',
+    right: '5px',
+    background: 'rgba(0,0,0,0.5)',
+    color: 'white',
+    border: 'none',
+    borderRadius: '50%',
+    width: '25px',
+    height: '25px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  uploadArea: {
+    border: '2px dashed #e0e0e0',
+    borderRadius: '8px',
+    padding: '30px',
+    textAlign: 'center',
+    background: '#f9f9f9'
+  },
+  fileInput: {
+    display: 'none'
+  },
+  uploadLabel: {
+    cursor: 'pointer',
+    color: '#667eea',
+    fontSize: '14px',
+    fontWeight: '500'
   }
 } as const

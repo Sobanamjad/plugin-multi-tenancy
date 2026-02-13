@@ -17,8 +17,9 @@ export default function Dashboard() {
     setTotalProducts(data.totalDocs || 0)
     setLoading(false)
   }
+
   useEffect(() => {
-    fetch('/api/users/me')
+    fetch('/api/users/me') 
       .then(res => res.json())
       .then(data => {
         if (data.user) {

@@ -8,13 +8,24 @@ export const Media: CollectionConfig = {
   },
   access: {
     read: () => true,
-    create: ({ req: { user } }) => user?.role === 'super-admin' || user?.role === 'tenant-admin',
-    update: ({ req: { user } }) => user?.role === 'super-admin' || user?.role === 'tenant-admin',
-    delete: ({ req: { user } }) => user?.role === 'super-admin' || user?.role === 'tenant-admin',
+    create: ({ req: { user } }) => {
+      if (user?.role === 'super-admin') return true
+      if (user?.role === 'tenant-admin' || user?.role === 'user') return true
+      return false
+    },
+    update: ({ req: { user } }) => {
+      if (user?.role === 'super-admin') return true
+      return false
+    },
+    delete: ({ req: { user } }) => {
+      if (user?.role === 'super-admin') return true
+      return false
+    },
   },
   upload: {
     staticURL: '/media',
     staticDir: 'media',
+    mimeTypes: ['image/*'],
     imageSizes: [
       {
         name: 'thumbnail',
@@ -23,20 +34,13 @@ export const Media: CollectionConfig = {
         position: 'centre',
       },
       {
-        name: 'card',
+        name: 'medium',
         width: 768,
         height: 1024,
         position: 'centre',
       },
-      {
-        name: 'large',
-        width: 1920,
-        height: 1080,
-        position: 'centre',
-      },
     ],
     adminThumbnail: 'thumbnail',
-    mimeTypes: ['image/*', 'application/pdf'],
   },
   fields: [
     {
@@ -44,13 +48,8 @@ export const Media: CollectionConfig = {
       type: 'text',
       label: 'Alt Text',
       admin: {
-        description: 'Describe the image for accessibility and SEO'
+        description: 'Describe the image for accessibility'
       }
-    },
-    {
-      name: 'caption',
-      type: 'text',
-      label: 'Caption',
     },
     {
       name: 'tenant',
