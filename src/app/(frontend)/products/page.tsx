@@ -4,6 +4,37 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
+// Language Context
+const useLanguage = () => {
+  const [locale, setLocale] = useState('en')
+
+  useEffect(() => {
+    const cookies = document.cookie.split(';')
+    const localeCookie = cookies.find(c => c.trim().startsWith('payload-locale='))
+    if (localeCookie) {
+      setLocale(localeCookie.split('=')[1].trim())
+    }
+  }, [])
+
+  const changeLanguage = (lang: string) => {
+    document.cookie = `payload-locale=${lang}; path=/; max-age=31536000`
+    document.cookie = `locale=${lang}; path=/; max-age=31536000`
+    setLocale(lang)
+    window.location.reload()
+  }
+
+  const t = (text: any): string => {
+    if (!text) return ''
+    if (typeof text === 'string') return text
+    if (typeof text === 'object') {
+      return text[locale] || text.en || ''
+    }
+    return ''
+  }
+
+  return { locale, changeLanguage, t }
+}
+
 export default function ProductsPage() {
   const [products, setProducts] = useState([])
   const [showModal, setShowModal] = useState(false)
@@ -18,20 +49,37 @@ export default function ProductsPage() {
     inStock: true,
     quantity: 0,
     sku: '',
-    image: null
+    image: null,
+    tenant: null
   })
   const [user, setUser] = useState(null)
   const [showDropdown, setShowDropdown] = useState(false)
   const [selectedFile, setSelectedFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState('')
   const router = useRouter()
+  
+  const { locale, changeLanguage, t } = useLanguage()
 
+  // Fetch user and tenant on mount
   useEffect(() => {
     fetch('/api/users/me')
       .then(res => res.json())
       .then(data => {
         if (data.user) {
           setUser(data.user)
+          // Set tenant from user
+          if (data.user.tenant) {
+            setFormData(prev => ({ ...prev, tenant: data.user.tenant.id }))
+          } else {
+            // If user doesn't have tenant, fetch first tenant
+            fetch('/api/tenants?limit=1')
+              .then(res => res.json())
+              .then(tenantData => {
+                if (tenantData.docs && tenantData.docs[0]) {
+                  setFormData(prev => ({ ...prev, tenant: tenantData.docs[0].id }))
+                }
+              })
+          }
           fetchProducts()
         } else {
           router.push('/login')
@@ -39,11 +87,23 @@ export default function ProductsPage() {
       })
   }, [])
 
+  // Fetch products with current locale
   const fetchProducts = async () => {
-    const res = await fetch('/api/products')
-    const data = await res.json()
-    setProducts(data.docs || [])
+    try {
+      const res = await fetch(`/api/products?locale=${locale}&depth=2`)
+      const data = await res.json()
+      setProducts(data.docs || [])
+    } catch (error) {
+      console.error('Error fetching products:', error)
+    }
   }
+
+  // Reload products when locale changes
+  useEffect(() => {
+    if (user) {
+      fetchProducts()
+    }
+  }, [locale])
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target
@@ -82,67 +142,105 @@ export default function ProductsPage() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     
-    let imageData = null
-    if (selectedFile) {
-      imageData = await uploadImage()
-    }
+    try {
+      let imageData = null
+      if (selectedFile) {
+        imageData = await uploadImage()
+      }
 
-    const productData = {
-      ...formData,
-      price: parseFloat(formData.price),
-      quantity: parseInt(formData.quantity) || 0
-    }
+      // Get tenant ID from multiple sources
+      let tenantId = formData.tenant
+      if (!tenantId && user?.tenant) {
+        tenantId = user.tenant.id
+      }
+      if (!tenantId) {
+        // Try to get from localStorage or session
+        const savedTenant = localStorage.getItem('currentTenant')
+        if (savedTenant) {
+          tenantId = savedTenant
+        }
+      }
 
-    if (imageData) {
-      productData.image = imageData.id
-    }
-    
-    const url = editingProduct 
-      ? `/api/products/${editingProduct.id}`
-      : '/api/products'
-    
-    const method = editingProduct ? 'PATCH' : 'POST'
+      if (!tenantId) {
+        alert('No tenant found. Please select a tenant first.')
+        return
+      }
 
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(productData)
-    })
+      const productData = {
+        name: formData.name,
+        price: parseFloat(formData.price),
+        shortDescription: formData.shortDescription,
+        description: formData.description,
+        category: formData.category,
+        status: formData.status,
+        inStock: formData.inStock,
+        quantity: parseInt(formData.quantity) || 0,
+        sku: formData.sku,
+        tenant: tenantId // CRITICAL: Always include tenant
+      }
 
-    if (res.ok) {
-      setShowModal(false)
-      setEditingProduct(null)
-      setSelectedFile(null)
-      setPreviewUrl('')
-      setFormData({ 
-        name: '', 
-        price: '',
-        shortDescription: '',
-        description: '',
-        category: '',
-        status: 'draft',
-        inStock: true,
-        quantity: 0,
-        sku: '',
-        image: null
+      if (imageData) {
+        productData.image = imageData.id
+      }
+
+      console.log('Submitting product data:', productData)
+
+      const url = editingProduct 
+        ? `/api/products/${editingProduct.id}?locale=${locale}`
+        : `/api/products?locale=${locale}`
+      
+      const method = editingProduct ? 'PATCH' : 'POST'
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(productData)
       })
-      fetchProducts()
+
+      if (res.ok) {
+        setShowModal(false)
+        setEditingProduct(null)
+        setSelectedFile(null)
+        setPreviewUrl('')
+        setFormData({ 
+          name: '', 
+          price: '',
+          shortDescription: '',
+          description: '',
+          category: '',
+          status: 'draft',
+          inStock: true,
+          quantity: 0,
+          sku: '',
+          image: null,
+          tenant: tenantId // Preserve tenant ID
+        })
+        fetchProducts()
+      } else {
+        const error = await res.json()
+        console.error('Product creation failed:', error)
+        alert(`Error: ${error.errors?.[0]?.message || 'Something went wrong'}`)
+      }
+    } catch (error) {
+      console.error('Submit error:', error)
+      alert('An error occurred while saving the product')
     }
   }
 
   const handleEdit = (product) => {
     setEditingProduct(product)
     setFormData({
-      name: product.name,
+      name: t(product.name),
       price: product.price,
-      shortDescription: product.shortDescription || '',
-      description: product.description || '',
-      category: product.category || '',
+      shortDescription: t(product.shortDescription),
+      description: t(product.description),
+      category: t(product.category),
       status: product.status || 'draft',
       inStock: product.inStock ?? true,
       quantity: product.quantity || 0,
       sku: product.sku || '',
-      image: product.image || null
+      image: product.image || null,
+      tenant: product.tenant?.id || formData.tenant // Preserve tenant
     })
     if (product.image) {
       setPreviewUrl(product.image.url)
@@ -151,9 +249,13 @@ export default function ProductsPage() {
   }
 
   const handleDelete = async (id) => {
-    if (confirm('Are you sure you want to delete this product?')) {
-      await fetch(`/api/products/${id}`, { method: 'DELETE' })
-      fetchProducts()
+    if (confirm(t({ en: 'Are you sure you want to delete this product?', ur: 'کیا آپ واقعی یہ پروڈکٹ حذف کرنا چاہتے ہیں؟' }))) {
+      try {
+        await fetch(`/api/products/${id}`, { method: 'DELETE' })
+        fetchProducts()
+      } catch (error) {
+        console.error('Delete error:', error)
+      }
     }
   }
 
@@ -166,28 +268,59 @@ export default function ProductsPage() {
     return (
       <div style={styles.loadingContainer}>
         <div style={styles.loadingSpinner}></div>
-        <p>Loading...</p>
+        <p>{t({ en: 'Loading...', ur: 'لوڈ ہو رہا ہے...' })}</p>
       </div>
     )
   }
 
   return (
-    <div style={styles.container}>
+    <div style={{...styles.container, direction: locale === 'ur' ? 'rtl' : 'ltr'}}>
       {/* Navbar */}
       <nav style={styles.navbar}>
         <div style={styles.navLeft}>
           <Link href="/dashboard" style={styles.logo}>
-            Multi-Tenant CMS
+            {t({ en: 'Multi-Tenant CMS', ur: 'ملٹی ٹیننٹ سی ایم ایس' })}
           </Link>
         </div>
 
         <div style={styles.navRight}>
-          <Link href="/dashboard" style={styles.navLink}>Dashboard</Link>
-          <Link href="/products" style={{...styles.navLink, ...styles.activeLink}}>Products</Link>
-          <Link href="/tenants" style={{...styles.navLink, ...styles.activeLink}}>Tenants</Link>
-          <Link href="/users" style={styles.navLink}>Users</Link>
+          {/* Language Switcher */}
+          <div style={styles.languageSwitcher}>
+            <button
+              onClick={() => changeLanguage('en')}
+              style={{
+                ...styles.langBtn,
+                background: locale === 'en' ? '#667eea' : 'transparent',
+                color: locale === 'en' ? 'white' : '#666'
+              }}
+            >
+              EN
+            </button>
+            <button
+              onClick={() => changeLanguage('ur')}
+              style={{
+                ...styles.langBtn,
+                background: locale === 'ur' ? '#667eea' : 'transparent',
+                color: locale === 'ur' ? 'white' : '#666'
+              }}
+            >
+              UR
+            </button>
+          </div>
 
-          
+          <Link href="/dashboard" style={{...styles.navLink}}>
+            {t({ en: 'Dashboard', ur: 'ڈیش بورڈ' })}
+          </Link>
+          <Link href="/products" style={{...styles.navLink, ...styles.activeLink}}>
+            {t({ en: 'Products', ur: 'مصنوعات' })}
+          </Link>
+          <Link href="/tenants" style={styles.navLink}>
+            {t({ en: 'Tenants', ur: 'کرایہ دار' })}
+          </Link>
+          <Link href="/users" style={styles.navLink}>
+            {t({ en: 'Users', ur: 'صارفین' })}
+          </Link>
+
           <div style={styles.profileContainer}>
             <div 
               style={styles.profileInfo}
@@ -203,14 +336,14 @@ export default function ProductsPage() {
             {showDropdown && (
               <div style={styles.dropdown}>
                 <Link href="/profile" style={styles.dropdownItem}>
-                  <span>👤</span> Profile
+                  <span>👤</span> {t({ en: 'Profile', ur: 'پروفائل' })}
                 </Link>
                 <Link href="/settings" style={styles.dropdownItem}>
-                  <span>⚙️</span> Settings
+                  <span>⚙️</span> {t({ en: 'Settings', ur: 'ترتیبات' })}
                 </Link>
                 <div style={styles.dropdownDivider}></div>
                 <button onClick={handleLogout} style={styles.dropdownItem}>
-                  <span>🚪</span> Logout
+                  <span>🚪</span> {t({ en: 'Logout', ur: 'لاگ آؤٹ' })}
                 </button>
               </div>
             )}
@@ -222,8 +355,12 @@ export default function ProductsPage() {
       <main style={styles.main}>
         <div style={styles.header}>
           <div>
-            <h1 style={styles.title}>Products</h1>
-            <p style={styles.subtitle}>Manage your products</p>
+            <h1 style={styles.title}>
+              {t({ en: 'Products', ur: 'مصنوعات' })}
+            </h1>
+            <p style={styles.subtitle}>
+              {t({ en: 'Manage your products', ur: 'اپنی مصنوعات کا نظم کریں' })}
+            </p>
           </div>
           <button 
             style={styles.addButton}
@@ -241,12 +378,13 @@ export default function ProductsPage() {
                 inStock: true,
                 quantity: 0,
                 sku: '',
-                image: null
+                image: null,
+                tenant: formData.tenant // Preserve tenant
               })
               setShowModal(true)
             }}
           >
-            + Add New Product
+            {t({ en: '+ Add New Product', ur: '+ نئی پروڈکٹ شامل کریں' })}
           </button>
         </div>
 
@@ -255,13 +393,13 @@ export default function ProductsPage() {
           <table style={styles.table}>
             <thead>
               <tr>
-                <th style={styles.th}>Image</th>
-                <th style={styles.th}>Name</th>
-                <th style={styles.th}>Price</th>
-                <th style={styles.th}>Category</th>
-                <th style={styles.th}>Status</th>
-                <th style={styles.th}>Stock</th>
-                <th style={styles.th}>Actions</th>
+                <th style={styles.th}>{t({ en: 'Image', ur: 'تصویر' })}</th>
+                <th style={styles.th}>{t({ en: 'Name', ur: 'نام' })}</th>
+                <th style={styles.th}>{t({ en: 'Price', ur: 'قیمت' })}</th>
+                <th style={styles.th}>{t({ en: 'Category', ur: 'زمرہ' })}</th>
+                <th style={styles.th}>{t({ en: 'Status', ur: 'حالت' })}</th>
+                <th style={styles.th}>{t({ en: 'Stock', ur: 'اسٹاک' })}</th>
+                <th style={styles.th}>{t({ en: 'Actions', ur: 'کارروائیاں' })}</th>
               </tr>
             </thead>
             <tbody>
@@ -271,7 +409,7 @@ export default function ProductsPage() {
                     {product.image ? (
                       <img 
                         src={product.image.url} 
-                        alt={product.name}
+                        alt={t(product.name)}
                         style={styles.productImage}
                       />
                     ) : (
@@ -279,11 +417,15 @@ export default function ProductsPage() {
                     )}
                   </td>
                   <td style={styles.td}>
-                    <strong>{product.name}</strong>
-                    <div style={styles.sku}>SKU: {product.sku || 'N/A'}</div>
+                    <strong>{t(product.name)}</strong>
+                    <div style={styles.sku}>
+                      {t({ en: 'SKU', ur: 'ایس کے یو' })}: {product.sku || 'N/A'}
+                    </div>
                   </td>
-                  <td style={styles.td}>${product.price}</td>
-                  <td style={styles.td}>{product.category || 'N/A'}</td>
+                  <td style={styles.td}>
+                    {locale === 'ur' ? 'روپیہ' : '$'} {product.price}
+                  </td>
+                  <td style={styles.td}>{t(product.category) || 'N/A'}</td>
                   <td style={styles.td}>
                     <span style={{
                       ...styles.statusBadge,
@@ -292,14 +434,22 @@ export default function ProductsPage() {
                       color: product.status === 'published' ? '#22543d' : 
                             product.status === 'draft' ? '#856404' : '#742a2a'
                     }}>
-                      {product.status}
+                      {t({ 
+                        en: product.status, 
+                        ur: product.status === 'published' ? 'شائع شدہ' :
+                            product.status === 'draft' ? 'مسودہ' : 'محفوظ شدہ'
+                      })}
                     </span>
                   </td>
                   <td style={styles.td}>
                     {product.inStock ? (
-                      <span style={styles.inStock}>✓ {product.quantity}</span>
+                      <span style={styles.inStock}>
+                        ✓ {product.quantity} {t({ en: 'in stock', ur: 'اسٹاک میں' })}
+                      </span>
                     ) : (
-                      <span style={styles.outOfStock}>✗ Out</span>
+                      <span style={styles.outOfStock}>
+                        {t({ en: '✗ Out of stock', ur: '✗ اسٹاک ختم' })}
+                      </span>
                     )}
                   </td>
                   <td style={styles.td}>
@@ -307,13 +457,13 @@ export default function ProductsPage() {
                       style={styles.editBtn}
                       onClick={() => handleEdit(product)}
                     >
-                      Edit
+                      {t({ en: 'Edit', ur: 'ترمیم' })}
                     </button>
                     <button 
                       style={styles.deleteBtn}
                       onClick={() => handleDelete(product.id)}
                     >
-                      Delete
+                      {t({ en: 'Delete', ur: 'حذف کریں' })}
                     </button>
                   </td>
                 </tr>
@@ -321,7 +471,10 @@ export default function ProductsPage() {
               {products.length === 0 && (
                 <tr>
                   <td colSpan="7" style={styles.noData}>
-                    No products found. Click "Add New Product" to create one.
+                    {t({ 
+                      en: 'No products found. Click "Add New Product" to create one.',
+                      ur: 'کوئی پروڈکٹ نہیں ملی۔ نیا بنانے کے لیے "نئی پروڈکٹ شامل کریں" پر کلک کریں۔'
+                    })}
                   </td>
                 </tr>
               )}
@@ -335,13 +488,25 @@ export default function ProductsPage() {
         <div style={styles.modalOverlay}>
           <div style={styles.modal}>
             <h2 style={styles.modalTitle}>
-              {editingProduct ? 'Edit Product' : 'Add New Product'}
+              {editingProduct 
+                ? t({ en: 'Edit Product', ur: 'پروڈکٹ میں ترمیم' })
+                : t({ en: 'Add New Product', ur: 'نئی پروڈکٹ شامل کریں' })
+              }
             </h2>
             
             <form onSubmit={handleSubmit} style={styles.modalForm}>
-              {/* Image Upload Field - NEW */}
+              {/* Hidden tenant field - CRITICAL */}
+              <input 
+                type="hidden" 
+                name="tenant" 
+                value={formData.tenant || user?.tenant?.id || ''} 
+              />
+
+              {/* Image Upload Field */}
               <div style={styles.formGroup}>
-                <label style={styles.label}>Product Image</label>
+                <label style={styles.label}>
+                  {t({ en: 'Product Image', ur: 'پروڈکٹ کی تصویر' })}
+                </label>
                 <div style={styles.imageUploadContainer}>
                   {previewUrl ? (
                     <div style={styles.imagePreview}>
@@ -367,7 +532,7 @@ export default function ProductsPage() {
                         id="image-upload"
                       />
                       <label htmlFor="image-upload" style={styles.uploadLabel}>
-                        📸 Click to upload image
+                        📸 {t({ en: 'Click to upload image', ur: 'تصویر اپ لوڈ کرنے کے لیے کلک کریں' })}
                       </label>
                     </div>
                   )}
@@ -377,7 +542,9 @@ export default function ProductsPage() {
               {/* Basic Info */}
               <div style={styles.formRow}>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Product Name *</label>
+                  <label style={styles.label}>
+                    {t({ en: 'Product Name *', ur: 'پروڈکٹ کا نام *' })}
+                  </label>
                   <input
                     type="text"
                     name="name"
@@ -385,12 +552,14 @@ export default function ProductsPage() {
                     onChange={handleInputChange}
                     style={styles.input}
                     required
-                    placeholder="Enter product name"
+                    placeholder={t({ en: 'Enter product name', ur: 'پروڈکٹ کا نام درج کریں' })}
                   />
                 </div>
 
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Price *</label>
+                  <label style={styles.label}>
+                    {t({ en: 'Price *', ur: 'قیمت *' })}
+                  </label>
                   <input
                     type="number"
                     name="price"
@@ -408,41 +577,65 @@ export default function ProductsPage() {
               {/* SKU and Category */}
               <div style={styles.formRow}>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>SKU</label>
+                  <label style={styles.label}>
+                    {t({ en: 'SKU', ur: 'ایس کے یو' })}
+                  </label>
                   <input
                     type="text"
                     name="sku"
                     value={formData.sku}
                     onChange={handleInputChange}
                     style={styles.input}
-                    placeholder="e.g., PRD-001"
+                    placeholder={t({ en: 'e.g., PRD-001', ur: 'مثلاً، PRD-001' })}
                   />
                 </div>
 
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Category</label>
+                  <label style={styles.label}>
+                    {t({ en: 'Category', ur: 'زمرہ' })}
+                  </label>
                   <select
                     name="category"
                     value={formData.category}
                     onChange={handleInputChange}
                     style={styles.select}
                   >
-                    <option value="">Select Category</option>
-                    <option value="electronics">Electronics</option>
-                    <option value="clothing">Clothing</option>
-                    <option value="books">Books</option>
-                    <option value="home-garden">Home & Garden</option>
-                    <option value="sports">Sports</option>
-                    <option value="toys">Toys</option>
-                    <option value="food">Food</option>
-                    <option value="other">Other</option>
+                    <option value="">
+                      {t({ en: 'Select Category', ur: 'زمرہ منتخب کریں' })}
+                    </option>
+                    <option value="electronics">
+                      {t({ en: 'Electronics', ur: 'الیکٹرانکس' })}
+                    </option>
+                    <option value="clothing">
+                      {t({ en: 'Clothing', ur: 'لباس' })}
+                    </option>
+                    <option value="books">
+                      {t({ en: 'Books', ur: 'کتب' })}
+                    </option>
+                    <option value="home-garden">
+                      {t({ en: 'Home & Garden', ur: 'گھر اور باغ' })}
+                    </option>
+                    <option value="sports">
+                      {t({ en: 'Sports', ur: 'کھیل' })}
+                    </option>
+                    <option value="toys">
+                      {t({ en: 'Toys', ur: 'کھلونے' })}
+                    </option>
+                    <option value="food">
+                      {t({ en: 'Food', ur: 'کھانا' })}
+                    </option>
+                    <option value="other">
+                      {t({ en: 'Other', ur: 'دیگر' })}
+                    </option>
                   </select>
                 </div>
               </div>
 
               {/* Short Description */}
               <div style={styles.formGroup}>
-                <label style={styles.label}>Short Description</label>
+                <label style={styles.label}>
+                  {t({ en: 'Short Description', ur: 'مختصر تفصیل' })}
+                </label>
                 <textarea
                   name="shortDescription"
                   value={formData.shortDescription}
@@ -450,36 +643,46 @@ export default function ProductsPage() {
                   style={styles.textarea}
                   rows="2"
                   maxLength="200"
-                  placeholder="Brief description (max 200 chars)"
+                  placeholder={t({ en: 'Brief description (max 200 chars)', ur: 'مختصر تفصیل (زیادہ سے زیادہ 200 حروف)' })}
                 />
               </div>
 
               {/* Full Description */}
               <div style={styles.formGroup}>
-                <label style={styles.label}>Full Description</label>
+                <label style={styles.label}>
+                  {t({ en: 'Full Description', ur: 'مکمل تفصیل' })}
+                </label>
                 <textarea
                   name="description"
                   value={formData.description}
                   onChange={handleInputChange}
                   style={styles.textarea}
                   rows="4"
-                  placeholder="Detailed product description"
+                  placeholder={t({ en: 'Detailed product description', ur: 'تفصیلی پروڈکٹ کی تفصیل' })}
                 />
               </div>
 
               {/* Status and Stock */}
               <div style={styles.formRow}>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Status</label>
+                  <label style={styles.label}>
+                    {t({ en: 'Status', ur: 'حالت' })}
+                  </label>
                   <select
                     name="status"
                     value={formData.status}
                     onChange={handleInputChange}
                     style={styles.select}
                   >
-                    <option value="draft">Draft</option>
-                    <option value="published">Published</option>
-                    <option value="archived">Archived</option>
+                    <option value="draft">
+                      {t({ en: 'Draft', ur: 'مسودہ' })}
+                    </option>
+                    <option value="published">
+                      {t({ en: 'Published', ur: 'شائع شدہ' })}
+                    </option>
+                    <option value="archived">
+                      {t({ en: 'Archived', ur: 'محفوظ شدہ' })}
+                    </option>
                   </select>
                 </div>
 
@@ -491,7 +694,7 @@ export default function ProductsPage() {
                       checked={formData.inStock}
                       onChange={handleInputChange}
                     />
-                    In Stock
+                    {t({ en: 'In Stock', ur: 'اسٹاک میں' })}
                   </label>
                   
                   {formData.inStock && (
@@ -501,7 +704,7 @@ export default function ProductsPage() {
                       value={formData.quantity}
                       onChange={handleInputChange}
                       style={{...styles.input, marginTop: '10px'}}
-                      placeholder="Quantity"
+                      placeholder={t({ en: 'Quantity', ur: 'تعداد' })}
                       min="0"
                     />
                   )}
@@ -519,10 +722,13 @@ export default function ProductsPage() {
                     setPreviewUrl('')
                   }}
                 >
-                  Cancel
+                  {t({ en: 'Cancel', ur: 'منسوخ کریں' })}
                 </button>
                 <button type="submit" style={styles.saveBtn}>
-                  {editingProduct ? 'Update Product' : 'Create Product'}
+                  {editingProduct 
+                    ? t({ en: 'Update Product', ur: 'پروڈکٹ اپ ڈیٹ کریں' })
+                    : t({ en: 'Create Product', ur: 'پروڈکٹ بنائیں' })
+                  }
                 </button>
               </div>
             </form>
@@ -531,6 +737,27 @@ export default function ProductsPage() {
       )}
     </div>
   )
+}
+
+
+const additionalStyles = {
+  languageSwitcher: {
+    display: 'flex',
+    gap: '5px',
+    border: '1px solid #e0e0e0',
+    borderRadius: '6px',
+    padding: '2px',
+    marginRight: '20px'
+  },
+  langBtn: {
+    padding: '4px 12px',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '14px',
+    fontWeight: '500',
+    transition: 'all 0.3s'
+  }
 }
 
 // Styles

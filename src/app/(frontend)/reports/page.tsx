@@ -17,25 +17,17 @@ export default function ReportsPage() {
       inStock: 0,
       outOfStock: 0,
       byCategory: {},
-      recent: [],
-      totalValue: 0,
-      averagePrice: 0
+      recent: []
     },
     users: {
       total: 0,
       superAdmin: 0,
       tenantAdmin: 0,
-      regular: 0,
-      byTenant: {},
-      recent: []
+      regular: 0
     },
     tenants: {
       total: 0,
-      active: 0,
-      inactive: 0,
-      withProducts: 0,
-      withUsers: 0,
-      list: []
+      active: 0
     }
   })
   const router = useRouter()
@@ -46,40 +38,70 @@ export default function ReportsPage() {
       .then(data => {
         if (data.user) {
           setUser(data.user)
-          fetchAllData()
+          fetchReportsData()
         } else {
           router.push('/login')
         }
       })
   }, [])
 
-  const fetchAllData = async () => {
+  const fetchReportsData = async () => {
     setLoading(true)
     
     try {
-      // Parallel fetching for better performance
-      const [productsRes, usersRes, tenantsRes] = await Promise.all([
-        fetch('/api/products?limit=1000'),
-        fetch('/api/users?limit=1000'),
-        fetch('/api/tenants?limit=1000')
-      ])
-
+      // Fetch products
+      const productsRes = await fetch('/api/products?limit=100')
       const productsData = await productsRes.json()
-      const usersData = await usersRes.json()
-      const tenantsData = await tenantsRes.json()
-
       const products = productsData.docs || []
-      const users = usersData.docs || []
-      const tenants = tenantsData.docs || []
+      
+      // Fetch users (if super admin)
+      let users = []
+      if (user?.role === 'super-admin') {
+        const usersRes = await fetch('/api/users?limit=100')
+        const usersData = await usersRes.json()
+        users = usersData.docs || []
+      }
+      
+      // Fetch tenants (if super admin)
+      let tenants = []
+      if (user?.role === 'super-admin') {
+        const tenantsRes = await fetch('/api/tenants')
+        const tenantsData = await tenantsRes.json()
+        tenants = tenantsData.docs || []
+      }
 
       // Calculate product stats
-      const productStats = calculateProductStats(products)
-      
+      const productStats = {
+        total: products.length,
+        published: products.filter(p => p.status === 'published').length,
+        draft: products.filter(p => p.status === 'draft').length,
+        archived: products.filter(p => p.status === 'archived').length,
+        inStock: products.filter(p => p.inStock === true).length,
+        outOfStock: products.filter(p => p.inStock === false).length,
+        byCategory: {},
+        recent: products.slice(0, 5) // Last 5 products
+      }
+
+      // Calculate category stats
+      products.forEach(product => {
+        if (product.category) {
+          productStats.byCategory[product.category] = (productStats.byCategory[product.category] || 0) + 1
+        }
+      })
+
       // Calculate user stats
-      const userStats = calculateUserStats(users, tenants)
-      
+      const userStats = {
+        total: users.length,
+        superAdmin: users.filter(u => u.role === 'super-admin').length,
+        tenantAdmin: users.filter(u => u.role === 'tenant-admin').length,
+        regular: users.filter(u => u.role === 'user').length
+      }
+
       // Calculate tenant stats
-      const tenantStats = calculateTenantStats(tenants, products, users)
+      const tenantStats = {
+        total: tenants.length,
+        active: tenants.filter(t => t.status === 'active').length
+      }
 
       setStats({
         products: productStats,
@@ -90,92 +112,6 @@ export default function ReportsPage() {
       console.error('Error fetching reports data:', error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const calculateProductStats = (products) => {
-    const byCategory = {}
-    let totalValue = 0
-
-    products.forEach(product => {
-      // Category stats
-      if (product.category) {
-        byCategory[product.category] = (byCategory[product.category] || 0) + 1
-      }
-
-      // Total value
-      totalValue += (product.price || 0) * (product.quantity || 1)
-    })
-
-    return {
-      total: products.length,
-      published: products.filter(p => p.status === 'published').length,
-      draft: products.filter(p => p.status === 'draft').length,
-      archived: products.filter(p => p.status === 'archived').length,
-      inStock: products.filter(p => p.inStock === true).length,
-      outOfStock: products.filter(p => p.inStock === false).length,
-      byCategory: byCategory,
-      recent: products.slice(0, 5),
-      totalValue: totalValue,
-      averagePrice: products.length ? (totalValue / products.length).toFixed(2) : 0
-    }
-  }
-
-  const calculateUserStats = (users, tenants) => {
-    const byTenant = {}
-
-    users.forEach(user => {
-      // User by tenant stats
-      if (user.tenants) {
-        user.tenants.forEach(t => {
-          const tenantId = typeof t.tenant === 'object' ? t.tenant.id : t.tenant
-          const tenant = tenants.find(ten => ten.id === tenantId)
-          const tenantName = tenant ? tenant.name : 'Unknown'
-          byTenant[tenantName] = (byTenant[tenantName] || 0) + 1
-        })
-      }
-    })
-
-    return {
-      total: users.length,
-      superAdmin: users.filter(u => u.role === 'super-admin').length,
-      tenantAdmin: users.filter(u => u.role === 'tenant-admin').length,
-      regular: users.filter(u => u.role === 'user').length,
-      byTenant: byTenant,
-      recent: users.slice(0, 5)
-    }
-  }
-
-  const calculateTenantStats = (tenants, products, users) => {
-    let withProducts = 0
-    let withUsers = 0
-
-    tenants.forEach(tenant => {
-      // Check if tenant has products
-      const hasProducts = products.some(p => {
-        const tenantId = typeof p.tenant === 'object' ? p.tenant?.id : p.tenant
-        return tenantId === tenant.id
-      })
-      if (hasProducts) withProducts++
-
-      // Check if tenant has users
-      const hasUsers = users.some(u => {
-        if (!u.tenants) return false
-        return u.tenants.some(t => {
-          const tenantId = typeof t.tenant === 'object' ? t.tenant?.id : t.tenant
-          return tenantId === tenant.id
-        })
-      })
-      if (hasUsers) withUsers++
-    })
-
-    return {
-      total: tenants.length,
-      active: tenants.filter(t => t.status === 'active').length,
-      inactive: tenants.filter(t => t.status !== 'active').length,
-      withProducts: withProducts,
-      withUsers: withUsers,
-      list: tenants
     }
   }
 
@@ -248,9 +184,7 @@ export default function ReportsPage() {
       <main style={styles.main}>
         <div style={styles.header}>
           <h1 style={styles.title}>Reports & Analytics</h1>
-          <p style={styles.subtitle}>
-            Last updated: {new Date().toLocaleString()}
-          </p>
+          <p style={styles.subtitle}>View statistics and insights about your data</p>
         </div>
 
         {loading ? (
@@ -264,22 +198,6 @@ export default function ReportsPage() {
                 <div style={styles.statContent}>
                   <h3 style={styles.statLabel}>Total Products</h3>
                   <p style={styles.statNumber}>{stats.products.total}</p>
-                </div>
-              </div>
-
-              <div style={styles.statCard}>
-                <div style={styles.statIcon}>💰</div>
-                <div style={styles.statContent}>
-                  <h3 style={styles.statLabel}>Total Value</h3>
-                  <p style={styles.statNumber}>${stats.products.totalValue.toLocaleString()}</p>
-                </div>
-              </div>
-
-              <div style={styles.statCard}>
-                <div style={styles.statIcon}>📊</div>
-                <div style={styles.statContent}>
-                  <h3 style={styles.statLabel}>Average Price</h3>
-                  <p style={styles.statNumber}>${stats.products.averagePrice}</p>
                 </div>
               </div>
 
@@ -304,142 +222,112 @@ export default function ReportsPage() {
               )}
             </div>
 
-            {/* Products Status */}
-            <div style={styles.section}>
-              <h2 style={styles.sectionTitle}>📦 Product Status</h2>
-              <div style={styles.statusGrid}>
-                <div style={styles.statusCard}>
-                  <span style={styles.statusLabel}>Published</span>
-                  <span style={styles.statusValue}>{stats.products.published}</span>
-                </div>
-                <div style={styles.statusCard}>
-                  <span style={styles.statusLabel}>Draft</span>
-                  <span style={styles.statusValue}>{stats.products.draft}</span>
-                </div>
-                <div style={styles.statusCard}>
-                  <span style={styles.statusLabel}>Archived</span>
-                  <span style={styles.statusValue}>{stats.products.archived}</span>
-                </div>
-                <div style={styles.statusCard}>
-                  <span style={styles.statusLabel}>In Stock</span>
-                  <span style={styles.statusValue}>{stats.products.inStock}</span>
-                </div>
-                <div style={styles.statusCard}>
-                  <span style={styles.statusLabel}>Out of Stock</span>
-                  <span style={styles.statusValue}>{stats.products.outOfStock}</span>
+            {/* Products Status Chart */}
+            <div style={styles.chartSection}>
+              <h2 style={styles.sectionTitle}>Product Status</h2>
+              <div style={styles.chartContainer}>
+                <div style={styles.progressBarContainer}>
+                  <div style={styles.progressBar}>
+                    <div style={{
+                      ...styles.progressSegment,
+                      width: `${(stats.products.published / (stats.products.total || 1)) * 100}%`,
+                      backgroundColor: '#48bb78'
+                    }} />
+                    <div style={{
+                      ...styles.progressSegment,
+                      width: `${(stats.products.draft / (stats.products.total || 1)) * 100}%`,
+                      backgroundColor: '#ecc94b'
+                    }} />
+                    <div style={{
+                      ...styles.progressSegment,
+                      width: `${(stats.products.archived / (stats.products.total || 1)) * 100}%`,
+                      backgroundColor: '#f56565'
+                    }} />
+                  </div>
+                  <div style={styles.progressLabels}>
+                    <span style={styles.progressLabel}><span style={{...styles.dot, backgroundColor: '#48bb78'}}></span> Published ({stats.products.published})</span>
+                    <span style={styles.progressLabel}><span style={{...styles.dot, backgroundColor: '#ecc94b'}}></span> Draft ({stats.products.draft})</span>
+                    <span style={styles.progressLabel}><span style={{...styles.dot, backgroundColor: '#f56565'}}></span> Archived ({stats.products.archived})</span>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Products by Category */}
+            {/* Stock Status */}
+            <div style={styles.chartSection}>
+              <h2 style={styles.sectionTitle}>Stock Status</h2>
+              <div style={styles.stockGrid}>
+                <div style={styles.stockCard}>
+                  <div style={styles.stockIcon}>✅</div>
+                  <div>
+                    <h4 style={styles.stockLabel}>In Stock</h4>
+                    <p style={styles.stockNumber}>{stats.products.inStock}</p>
+                  </div>
+                </div>
+                <div style={styles.stockCard}>
+                  <div style={styles.stockIcon}>❌</div>
+                  <div>
+                    <h4 style={styles.stockLabel}>Out of Stock</h4>
+                    <p style={styles.stockNumber}>{stats.products.outOfStock}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Category Distribution */}
             {Object.keys(stats.products.byCategory).length > 0 && (
-              <div style={styles.section}>
-                <h2 style={styles.sectionTitle}>📊 Products by Category</h2>
+              <div style={styles.chartSection}>
+                <h2 style={styles.sectionTitle}>Products by Category</h2>
                 <div style={styles.categoryGrid}>
                   {Object.entries(stats.products.byCategory).map(([category, count]) => (
                     <div key={category} style={styles.categoryCard}>
-                      <span style={styles.categoryName}>{category}</span>
-                      <span style={styles.categoryCount}>{count as number}</span>
+                      <h4 style={styles.categoryName}>{category}</h4>
+                      <p style={styles.categoryCount}>{count as number}</p>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Tenants Section - Super Admin Only */}
-            {user.role === 'super-admin' && (
-              <>
-                <div style={styles.section}>
-                  <h2 style={styles.sectionTitle}>🏢 Tenant Overview</h2>
-                  <div style={styles.statusGrid}>
-                    <div style={styles.statusCard}>
-                      <span style={styles.statusLabel}>Active Tenants</span>
-                      <span style={styles.statusValue}>{stats.tenants.active}</span>
-                    </div>
-                    <div style={styles.statusCard}>
-                      <span style={styles.statusLabel}>Inactive Tenants</span>
-                      <span style={styles.statusValue}>{stats.tenants.inactive}</span>
-                    </div>
-                    <div style={styles.statusCard}>
-                      <span style={styles.statusLabel}>With Products</span>
-                      <span style={styles.statusValue}>{stats.tenants.withProducts}</span>
-                    </div>
-                    <div style={styles.statusCard}>
-                      <span style={styles.statusLabel}>With Users</span>
-                      <span style={styles.statusValue}>{stats.tenants.withUsers}</span>
-                    </div>
+            {/* User Distribution (Super Admin only) */}
+            {user.role === 'super-admin' && stats.users.total > 0 && (
+              <div style={styles.chartSection}>
+                <h2 style={styles.sectionTitle}>User Distribution</h2>
+                <div style={styles.userGrid}>
+                  <div style={styles.userCard}>
+                    <h4 style={styles.userLabel}>Super Admins</h4>
+                    <p style={styles.userCount}>{stats.users.superAdmin}</p>
+                  </div>
+                  <div style={styles.userCard}>
+                    <h4 style={styles.userLabel}>Tenant Admins</h4>
+                    <p style={styles.userCount}>{stats.users.tenantAdmin}</p>
+                  </div>
+                  <div style={styles.userCard}>
+                    <h4 style={styles.userLabel}>Regular Users</h4>
+                    <p style={styles.userCount}>{stats.users.regular}</p>
                   </div>
                 </div>
-
-                {/* Users by Tenant */}
-                {Object.keys(stats.users.byTenant).length > 0 && (
-                  <div style={styles.section}>
-                    <h2 style={styles.sectionTitle}>👥 Users by Tenant</h2>
-                    <div style={styles.tenantUserGrid}>
-                      {Object.entries(stats.users.byTenant).map(([tenantName, count]) => (
-                        <div key={tenantName} style={styles.tenantUserCard}>
-                          <span style={styles.tenantName}>{tenantName}</span>
-                          <span style={styles.userCount}>{count as number}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* User Roles Distribution */}
-                <div style={styles.section}>
-                  <h2 style={styles.sectionTitle}>👤 User Roles</h2>
-                  <div style={styles.statusGrid}>
-                    <div style={styles.statusCard}>
-                      <span style={styles.statusLabel}>Super Admins</span>
-                      <span style={styles.statusValue}>{stats.users.superAdmin}</span>
-                    </div>
-                    <div style={styles.statusCard}>
-                      <span style={styles.statusLabel}>Tenant Admins</span>
-                      <span style={styles.statusValue}>{stats.users.tenantAdmin}</span>
-                    </div>
-                    <div style={styles.statusCard}>
-                      <span style={styles.statusLabel}>Regular Users</span>
-                      <span style={styles.statusValue}>{stats.users.regular}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Recent Users */}
-                <div style={styles.section}>
-                  <h2 style={styles.sectionTitle}>🆕 Recent Users</h2>
-                  <div style={styles.recentList}>
-                    {stats.users.recent.map(user => (
-                      <div key={user.id} style={styles.recentItem}>
-                        <div>
-                          <strong>{user.name || user.email}</strong>
-                          <span style={styles.userRole}> ({user.role})</span>
-                        </div>
-                        <span style={styles.recentDate}>
-                          {new Date(user.createdAt).toLocaleDateString()}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </>
+              </div>
             )}
 
             {/* Recent Products */}
-            <div style={styles.section}>
-              <h2 style={styles.sectionTitle}>🆕 Recent Products</h2>
+            <div style={styles.recentSection}>
+              <h2 style={styles.sectionTitle}>Recent Products</h2>
               <div style={styles.recentList}>
                 {stats.products.recent.map(product => (
                   <div key={product.id} style={styles.recentItem}>
-                    <div>
+                    <div style={styles.recentInfo}>
                       <strong>{product.name}</strong>
-                      <span style={styles.productPrice}> - ${product.price}</span>
+                      <span style={styles.recentPrice}>${product.price}</span>
                     </div>
                     <span style={styles.recentDate}>
                       {new Date(product.createdAt).toLocaleDateString()}
                     </span>
                   </div>
                 ))}
+                {stats.products.recent.length === 0 && (
+                  <p style={styles.noData}>No products found</p>
+                )}
               </div>
             </div>
           </>
@@ -587,7 +475,7 @@ const styles = {
   },
   subtitle: {
     color: '#666',
-    fontSize: '14px'
+    fontSize: '16px'
   },
   loading: {
     textAlign: 'center',
@@ -621,12 +509,12 @@ const styles = {
     marginBottom: '5px'
   },
   statNumber: {
-    fontSize: '24px',
+    fontSize: '28px',
     fontWeight: 'bold',
     color: '#667eea',
     margin: 0
   },
-  section: {
+  chartSection: {
     background: 'white',
     borderRadius: '10px',
     padding: '25px',
@@ -638,27 +526,67 @@ const styles = {
     color: '#333',
     marginBottom: '20px'
   },
-  statusGrid: {
+  chartContainer: {
+    marginTop: '15px'
+  },
+  progressBarContainer: {
+    width: '100%'
+  },
+  progressBar: {
+    display: 'flex',
+    height: '30px',
+    borderRadius: '15px',
+    overflow: 'hidden',
+    marginBottom: '15px'
+  },
+  progressSegment: {
+    height: '100%',
+    transition: 'width 0.3s ease'
+  },
+  progressLabels: {
+    display: 'flex',
+    gap: '20px',
+    flexWrap: 'wrap'
+  },
+  progressLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    fontSize: '14px',
+    color: '#666'
+  },
+  dot: {
+    width: '10px',
+    height: '10px',
+    borderRadius: '50%',
+    display: 'inline-block'
+  },
+  stockGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
     gap: '15px'
   },
-  statusCard: {
+  stockCard: {
     background: '#f8f9fa',
     padding: '15px',
     borderRadius: '8px',
     display: 'flex',
-    flexDirection: 'column',
-    gap: '5px'
+    alignItems: 'center',
+    gap: '15px'
   },
-  statusLabel: {
+  stockIcon: {
+    fontSize: '24px'
+  },
+  stockLabel: {
     fontSize: '14px',
-    color: '#666'
+    color: '#666',
+    marginBottom: '5px'
   },
-  statusValue: {
+  stockNumber: {
     fontSize: '24px',
     fontWeight: 'bold',
-    color: '#667eea'
+    color: '#333',
+    margin: 0
   },
   categoryGrid: {
     display: 'grid',
@@ -669,68 +597,73 @@ const styles = {
     background: '#f8f9fa',
     padding: '15px',
     borderRadius: '8px',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '5px'
+    textAlign: 'center'
   },
   categoryName: {
     fontSize: '14px',
     color: '#666',
+    marginBottom: '5px',
     textTransform: 'capitalize'
   },
   categoryCount: {
-    fontSize: '20px',
+    fontSize: '24px',
     fontWeight: 'bold',
-    color: '#667eea'
+    color: '#667eea',
+    margin: 0
   },
-  tenantUserGrid: {
+  userGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
     gap: '15px'
   },
-  tenantUserCard: {
+  userCard: {
     background: '#f8f9fa',
     padding: '15px',
-    borderRadius: '8px',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center'
+    borderRadius: '8px'
   },
-  tenantName: {
+  userLabel: {
     fontSize: '14px',
-    color: '#666'
+    color: '#666',
+    marginBottom: '5px'
   },
   userCount: {
-    fontSize: '18px',
+    fontSize: '24px',
     fontWeight: 'bold',
-    color: '#667eea'
+    color: '#667eea',
+    margin: 0
+  },
+  recentSection: {
+    background: 'white',
+    borderRadius: '10px',
+    padding: '25px',
+    boxShadow: '0 2px 10px rgba(0,0,0,0.05)'
   },
   recentList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '10px'
+    marginTop: '15px'
   },
   recentItem: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '10px',
-    background: '#f8f9fa',
-    borderRadius: '6px'
+    padding: '12px 0',
+    borderBottom: '1px solid #e9ecef'
   },
-  userRole: {
-    fontSize: '12px',
-    color: '#999',
-    marginLeft: '5px'
+  recentInfo: {
+    display: 'flex',
+    gap: '20px',
+    alignItems: 'center'
   },
-  productPrice: {
-    fontSize: '12px',
+  recentPrice: {
     color: '#667eea',
     fontWeight: '500'
   },
   recentDate: {
-    fontSize: '12px',
+    color: '#999',
+    fontSize: '12px'
+  },
+  noData: {
+    textAlign: 'center',
+    padding: '20px',
     color: '#999'
   }
 } as const

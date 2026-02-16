@@ -9,6 +9,7 @@ export default function Dashboard() {
   const [showDropdown, setShowDropdown] = useState(false)
   const [totalProducts, setTotalProducts] = useState(0)
   const [totalTenants, setTotalTenants] = useState(0)
+  const [totalUsers, setTotalUsers] = useState(0)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
@@ -26,6 +27,13 @@ export default function Dashboard() {
     setLoading(false)
   }
 
+  const fetchTotalUsers = async () => {
+    const res = await fetch('/api/users?limit=0')
+    const data = await res.json()
+    setTotalUsers(data.totalDocs || 0)
+    setLoading(false)
+  }
+
   useEffect(() => {
     fetch('/api/users/me') 
       .then(res => res.json())
@@ -34,6 +42,7 @@ export default function Dashboard() {
           setUser(data.user)
           fetchProductCount()
           fetchTenantCount()
+          fetchTotalUsers()
         } else {
           router.push('/login')
         }
@@ -115,7 +124,7 @@ export default function Dashboard() {
           </div>
           <div style={styles.statCard}>
             <h3>Users</h3>
-            <p style={styles.statNumber}>0</p>
+            <p style={styles.statNumber}>{loading ? '...' : totalUsers}</p>
           </div>
         </div>
 

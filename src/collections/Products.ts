@@ -5,7 +5,7 @@ export const Products: CollectionConfig = {
   admin: {
     useAsTitle: 'name',
     group: 'Content',
-    defaultColumns: ['name', 'price', 'description', 'image', 'tenant'],
+    defaultColumns: ['name', 'price', 'shortDescription', 'image', 'tenant', 'updatedAt'],
   },
   fields: [
     {
@@ -15,7 +15,8 @@ export const Products: CollectionConfig = {
       label: 'Product Name',
       admin: {
         placeholder: 'Enter product name...'
-      }
+      },
+      localized: true,
     },
     
     {
@@ -39,13 +40,15 @@ export const Products: CollectionConfig = {
         rows: 3,
         maxLength: 200,
         description: 'Maximum 200 characters'
-      }
+      },
+      localized: true,
     },
     
     {
       name: 'description',
       type: 'richText',
       label: 'Description',
+      localized: true,
       admin: {
         placeholder: 'Enter product description...',
         elements: [
@@ -79,7 +82,7 @@ export const Products: CollectionConfig = {
       admin: {
         position: 'sidebar',
         description: 'Upload main product image'
-      }
+      },
     },
     
     {
@@ -103,7 +106,8 @@ export const Products: CollectionConfig = {
           label: 'Alt Text',
           admin: {
             placeholder: 'Describe the image for accessibility...'
-          }
+          },
+          localized: true,
         }
       ],
       admin: {
@@ -125,6 +129,7 @@ export const Products: CollectionConfig = {
         { label: 'Food', value: 'food' },
         { label: 'Other', value: 'other' },
       ],
+      localized: true,
       admin: {
         position: 'sidebar',
       }
@@ -138,7 +143,8 @@ export const Products: CollectionConfig = {
       admin: {
         position: 'sidebar',
         description: 'Press Enter to add tags'
-      }
+      },
+      localized: true,
     },
     
     {
@@ -153,7 +159,8 @@ export const Products: CollectionConfig = {
       ],
       admin: {
         position: 'sidebar',
-      }
+      },
+      localized: false,
     },
     
     {
@@ -163,7 +170,8 @@ export const Products: CollectionConfig = {
       defaultValue: true,
       admin: {
         position: 'sidebar',
-      }
+      },
+      localized: false,
     },
     
     {
@@ -175,7 +183,8 @@ export const Products: CollectionConfig = {
       admin: {
         position: 'sidebar',
         condition: (data) => data?.inStock === true,
-      }
+      },
+      localized: false,
     },
     
     {
@@ -186,7 +195,8 @@ export const Products: CollectionConfig = {
       admin: {
         position: 'sidebar',
         placeholder: 'e.g., PRD-001'
-      }
+      },
+      localized: false,
     },
   ],
 }

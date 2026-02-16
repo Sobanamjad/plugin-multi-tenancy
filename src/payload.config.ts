@@ -11,6 +11,7 @@ import { Products } from './collections/Products'
 import { Media } from './collections/Media'
 import { multiTenantPlugin } from '@payloadcms/plugin-multi-tenant'
 
+
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
 
@@ -21,6 +22,11 @@ export default buildConfig({
   collections: [Users, Tenants, Products, Media,],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
+  localization: {
+    locales: ['en', 'ur'], // English and Urdu
+    defaultLocale: 'en',
+    fallback: true, // Show fallback locale if translation missing
+  },
   db: postgresAdapter({
     pool: {
       connectionString: process.env.DATABASE_URL || '',
@@ -45,6 +51,7 @@ export default buildConfig({
         arrayTenantFieldName: 'tenant',
       },
       userHasAccessToAllTenants: (user) => user?.role === 'super-admin',
+      enableLocalizedTenants: true, 
     }),
   ],
 })
