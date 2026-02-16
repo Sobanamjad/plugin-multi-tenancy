@@ -90,10 +90,15 @@ export interface Config {
   db: {
     defaultIDType: number;
   };
-  fallbackLocale: ('false' | 'none' | 'null') | false | null | ('en' | 'ur') | ('en' | 'ur')[];
+  fallbackLocale:
+    | ('false' | 'none' | 'null')
+    | false
+    | null
+    | ('en' | 'ur' | 'ar' | 'fr' | 'es' | 'de')
+    | ('en' | 'ur' | 'ar' | 'fr' | 'es' | 'de')[];
   globals: {};
   globalsSelect: {};
-  locale: 'en' | 'ur';
+  locale: 'en' | 'ur' | 'ar' | 'fr' | 'es' | 'de';
   user: User;
   jobs: {
     tasks: unknown;
@@ -170,9 +175,6 @@ export interface Product {
   tenant?: (number | null) | Tenant;
   name: string;
   price: number;
-  /**
-   * Maximum 200 characters
-   */
   shortDescription?: string | null;
   description?: {
     root: {
@@ -189,13 +191,7 @@ export interface Product {
     };
     [k: string]: unknown;
   } | null;
-  /**
-   * Upload main product image
-   */
   image?: (number | null) | Media;
-  /**
-   * Additional product images
-   */
   gallery?:
     | {
         image: number | Media;
@@ -204,9 +200,6 @@ export interface Product {
       }[]
     | null;
   category?: ('electronics' | 'clothing' | 'books' | 'home-garden' | 'sports' | 'toys' | 'food' | 'other') | null;
-  /**
-   * Press Enter to add tags
-   */
   tags?: string[] | null;
   status?: ('draft' | 'published' | 'archived') | null;
   inStock?: boolean | null;

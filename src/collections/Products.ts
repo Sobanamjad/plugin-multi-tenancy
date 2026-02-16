@@ -1,5 +1,105 @@
-import { CollectionConfig } from 'payload'
+import { CollectionConfig, CollectionBeforeChangeHook } from 'payload'
+import { TranslationService } from '@/lib/translate' // ← your file from before
 
+const autoTranslateHook: CollectionBeforeChangeHook = async ({ data, req, operation }) => {
+  // Only run on create + update (not on read/delete)
+  if (operation !== 'create' && operation !== 'update') return data
+
+  const defaultLocale = req.payload.collections['products'].config.localization?.defaultLocale || 'en'
+  const locales = req.payload.collections['products'].config.localization?.locales || ['en']
+
+  // We only auto-translate if English exists and is non-empty
+  if (!data.name?.[defaultLocale]?.trim() && !data.shortDescription?.[defaultLocale]?.trim()) {
+    return data // skip if no English content
+  }
+
+  // Prepare result (we mutate a copy)
+  const newData = { ...data }
+
+  // List of localized text(-like) fields we want to translate
+  const fieldsToTranslate = [
+    { name: 'name', type: 'text' },
+    { name: 'shortDescription', type: 'textarea' },
+    { name: 'description', type: 'richText' },
+    { name: 'category', type: 'select' },     // we translate the label, not value
+    { name: 'tags', type: 'text' },           // comma separated → translate each
+  ]
+
+  for (const locale of locales) {
+    if (locale === defaultLocale) continue
+
+    // Skip if this locale already has good content (prevents overwriting manual edits)
+    if (newData.name?.[locale]?.trim() && newData.shortDescription?.[locale]?.trim()) {
+      continue
+    }
+
+    for (const field of fieldsToTranslate) {
+      const englishValue = newData[field.name]?.[defaultLocale]
+
+      if (!englishValue || typeof englishValue !== 'string') continue
+
+      let translated = englishValue
+
+      try {
+        if (field.type === 'richText') {
+          // Use your rich text translator
+          translated = await TranslationService.translateRichText(englishValue, locale)
+        } else {
+          // Simple text / textarea / select label / tags
+          translated = await TranslationService.translate(englishValue, locale)
+        }
+
+        // For category (select): translate the displayed label, but maybe keep value same
+        // If you want value also localized → change logic here
+        if (field.name === 'category' && translated !== englishValue) {
+          // Option A: translate label only, keep value English
+          // Option B: make category values themselves localized strings
+        }
+
+        // For tags (array of strings)
+        if (field.name === 'tags' && Array.isArray(englishValue)) {
+          translated = await Promise.all(
+            englishValue.map(tag => TranslationService.translate(tag.trim(), locale))
+          )
+        }
+
+        // Write back
+        newData[field.name] = {
+          ...(newData[field.name] || {}),
+          [locale]: translated,
+        }
+      } catch (err) {
+        console.error(`Auto-translation failed for ${field.name} → ${locale}:`, err)
+        // Optionally fallback: newData[field.name][locale] = englishValue
+      }
+    }
+
+    // Gallery altText (nested localized field)
+    if (Array.isArray(newData.gallery)) {
+      newData.gallery = await Promise.all(
+        newData.gallery.map(async (item: any) => {
+          const enAlt = item.altText?.[defaultLocale]
+          if (!enAlt || item.altText?.[locale]) return item
+
+          try {
+            const translatedAlt = await TranslationService.translate(enAlt, locale)
+            return {
+              ...item,
+              altText: {
+                ...(item.altText || {}),
+                [locale]: translatedAlt,
+              },
+            }
+          } catch {
+            return item
+          }
+        })
+      )
+    }
+  }
+
+  return newData
+}
 export const Products: CollectionConfig = {
   slug: 'products',
   admin: {
@@ -7,16 +107,19 @@ export const Products: CollectionConfig = {
     group: 'Content',
     defaultColumns: ['name', 'price', 'shortDescription', 'image', 'tenant', 'updatedAt'],
   },
+  hooks: {
+    beforeChange: [autoTranslateHook],
+  },
   fields: [
     {
       name: 'name',
       type: 'text',
       required: true,
       label: 'Product Name',
+      localized: true,
       admin: {
         placeholder: 'Enter product name...'
       },
-      localized: true,
     },
     
     {
@@ -35,13 +138,11 @@ export const Products: CollectionConfig = {
       name: 'shortDescription',
       type: 'textarea',
       label: 'Short Description',
-      admin: {
-        placeholder: 'Brief description for product listings...',
-        rows: 3,
-        maxLength: 200,
-        description: 'Maximum 200 characters'
-      },
       localized: true,
+      admin: {
+        placeholder: 'Brief description...',
+        rows: 3,
+      },
     },
     
     {
@@ -49,29 +150,6 @@ export const Products: CollectionConfig = {
       type: 'richText',
       label: 'Description',
       localized: true,
-      admin: {
-        placeholder: 'Enter product description...',
-        elements: [
-          'h1',
-          'h2',
-          'h3',
-          'h4',
-          'h5',
-          'h6',
-          'link',
-          'blockquote',
-          'ul',
-          'ol',
-          'indent',
-        ],
-        leaves: [
-          'bold',
-          'italic',
-          'underline',
-          'strikethrough',
-          'code',
-        ],
-      }
     },
     
     {
@@ -81,7 +159,6 @@ export const Products: CollectionConfig = {
       label: 'Product Image',
       admin: {
         position: 'sidebar',
-        description: 'Upload main product image'
       },
     },
     
@@ -89,10 +166,6 @@ export const Products: CollectionConfig = {
       name: 'gallery',
       type: 'array',
       label: 'Product Gallery',
-      labels: {
-        singular: 'Image',
-        plural: 'Images'
-      },
       fields: [
         {
           name: 'image',
@@ -104,15 +177,9 @@ export const Products: CollectionConfig = {
           name: 'altText',
           type: 'text',
           label: 'Alt Text',
-          admin: {
-            placeholder: 'Describe the image for accessibility...'
-          },
           localized: true,
         }
       ],
-      admin: {
-        description: 'Additional product images'
-      }
     },
     
     {
@@ -140,13 +207,13 @@ export const Products: CollectionConfig = {
       type: 'text',
       label: 'Tags',
       hasMany: true,
+      localized: true,
       admin: {
         position: 'sidebar',
-        description: 'Press Enter to add tags'
-      },
-      localized: true,
+      }
     },
     
+    // YEH FIELDS WAPAS ADD KARO - ye missing thein!
     {
       name: 'status',
       type: 'select',
@@ -160,7 +227,6 @@ export const Products: CollectionConfig = {
       admin: {
         position: 'sidebar',
       },
-      localized: false,
     },
     
     {
@@ -171,7 +237,6 @@ export const Products: CollectionConfig = {
       admin: {
         position: 'sidebar',
       },
-      localized: false,
     },
     
     {
@@ -184,7 +249,6 @@ export const Products: CollectionConfig = {
         position: 'sidebar',
         condition: (data) => data?.inStock === true,
       },
-      localized: false,
     },
     
     {
@@ -196,7 +260,6 @@ export const Products: CollectionConfig = {
         position: 'sidebar',
         placeholder: 'e.g., PRD-001'
       },
-      localized: false,
     },
   ],
 }

@@ -23,9 +23,9 @@ export default buildConfig({
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   localization: {
-    locales: ['en', 'ur'], // English and Urdu
+    locales: ['en', 'ur', 'ar', 'fr', 'es', 'de'], // ← add the languages you need
     defaultLocale: 'en',
-    fallback: true, // Show fallback locale if translation missing
+    fallback: true,           // very useful — shows English if translation missing
   },
   db: postgresAdapter({
     pool: {
